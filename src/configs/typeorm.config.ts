@@ -1,6 +1,13 @@
 import 'dotenv/config';
 import { join } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
+import { PermissionEntity } from '../modules/identity/domain/entities/permission.entity';
+import { RolePermissionEntity } from '../modules/identity/domain/entities/role-permission.entity';
+import { RoleEntity } from '../modules/identity/domain/entities/role.entity';
+import { SessionEntity } from '../modules/identity/domain/entities/session.entity';
+import { UserCredentialEntity } from '../modules/identity/domain/entities/user-credential.entity';
+import { UserPermissionEntity } from '../modules/identity/domain/entities/user-permission.entity';
+import { UserRoleEntity } from '../modules/identity/domain/entities/user-role.entity';
 import { UserEntity } from '../modules/identity/domain/entities/user.entity';
 
 const ssl =
@@ -17,7 +24,16 @@ export const typeOrmDataSourceOptions: DataSourceOptions = {
   database: process.env.DATABASE_NAME ?? 'nest_ntsi_boilerplate',
   ssl,
   synchronize: false,
-  entities: [UserEntity],
+  entities: [
+    UserEntity,
+    UserCredentialEntity,
+    SessionEntity,
+    PermissionEntity,
+    RoleEntity,
+    RolePermissionEntity,
+    UserRoleEntity,
+    UserPermissionEntity,
+  ],
   migrations: [join(__dirname, '../migrations/*{.ts,.js}')],
 };
 

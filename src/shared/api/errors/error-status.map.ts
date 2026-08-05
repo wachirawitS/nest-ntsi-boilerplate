@@ -9,6 +9,15 @@ const errorStatusByCode = new Map<string, HttpStatus>([
   [ErrorCode.ResourceNotFound, HttpStatus.NOT_FOUND],
   [ErrorCode.UserAlreadyExists, HttpStatus.CONFLICT],
   [ErrorCode.UserNotFound, HttpStatus.NOT_FOUND],
+  [ErrorCode.InvalidCredentials, HttpStatus.UNAUTHORIZED],
+  [ErrorCode.SessionExpired, HttpStatus.UNAUTHORIZED],
+  [ErrorCode.SessionRevoked, HttpStatus.UNAUTHORIZED],
+  [ErrorCode.InsufficientPermissions, HttpStatus.FORBIDDEN],
+  [ErrorCode.RoleNotFound, HttpStatus.NOT_FOUND],
+  [ErrorCode.RoleInUse, HttpStatus.CONFLICT],
+  [ErrorCode.PermissionNotFound, HttpStatus.NOT_FOUND],
+  [ErrorCode.UserInactive, HttpStatus.FORBIDDEN],
+  [ErrorCode.RateLimitExceeded, HttpStatus.TOO_MANY_REQUESTS],
 ]);
 
 export function getHttpStatusForErrorCode(code: string): HttpStatus {

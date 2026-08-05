@@ -264,6 +264,206 @@ export class UserCreatedEvent implements DomainEvent<UserCreatedPayload> {
 
 ใช้ facade เมื่อ business flow ต้องรู้ผลทันที ใช้ event เมื่อ module อื่นแค่ต้อง react ต่อ
 
+## Auth / RBAC Baseline
+
+boilerplate นี้มี **Access Control Baseline** ที่ใช้งาน production ได้แบบเล็กและตั้งใจ ไม่ใช่ demo auth
+
+`identity` เป็น owning domain ของ:
+
+- users
+- local password credentials
+- sessions
+- roles
+- permissions
+- user role assignments
+- direct user permission grants
+
+### Auth Endpoints
+
+| Method | Path | Public? | Purpose |
+| --- | --- | --- | --- |
+| POST | `/auth/login` | yes | Login ด้วย email/password และสร้าง session |
+| POST | `/auth/refresh` | yes | Rotate refresh token และออก access token ใหม่ |
+| POST | `/auth/logout` | no | Revoke current session |
+| GET | `/auth/me` | no | คืน current principal พร้อม roles/effective permissions |
+| POST | `/auth/change-password` | no | เปลี่ยน password, revoke sessions อื่น, rotate session ปัจจุบัน |
+
+User/role/permission administration เป็น protected identity management APIs:
+
+| Method | Path | Permission |
+| --- | --- | --- |
+| POST | `/users` | `users:create` |
+| GET | `/users` | `users:read` |
+| GET | `/users/:id` | `users:read` |
+| PUT | `/users/:id/roles` | `users:manageRoles` |
+| PUT | `/users/:id/direct-permissions` | `users:manageDirectPermissions` |
+| PUT | `/users/:id/deactivate` | `users:deactivate` |
+| PUT | `/users/:id/reactivate` | `users:reactivate` |
+| POST | `/users/:id/revoke-sessions` | `users:revokeSessions` |
+| GET | `/roles` | `roles:read` |
+| POST | `/roles` | `roles:create` |
+| PUT | `/roles/:key` | `roles:update` |
+| DELETE | `/roles/:key` | `roles:delete` |
+| PUT | `/roles/:key/permissions` | `roles:managePermissions` |
+| GET | `/permissions` | `permissions:read` |
+
+### Token and Session Model
+
+- Access token เป็น JWT อายุสั้น ค่า default `JWT_ACCESS_TOKEN_TTL_SECONDS=900`
+- JWT มี identity/session claims เท่านั้น ไม่ฝัง effective permissions
+- Refresh token เป็น opaque token รูปแบบ `sessionId.secret`
+- server เก็บ hash ของ refresh token secret ใน `identity.sessions`
+- refresh สำเร็จต้อง rotate refresh token ทุกครั้ง
+- reuse token เก่าจะ revoke session
+- logout/deactivate/admin revoke จะ revoke server-side session
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant AuthController as Identity / AuthController
+    participant LoginUseCase as Identity / LoginUseCase
+    participant Credential as Identity / Credential
+    participant Session as Identity / Session
+    participant TokenIssuer as Identity / TokenIssuer
+
+    Client->>AuthController: POST /auth/login
+    AuthController->>LoginUseCase: email, password
+    LoginUseCase->>Credential: verify Argon2id password hash
+    LoginUseCase->>Session: create server-side session
+    LoginUseCase->>TokenIssuer: issue JWT access token
+    LoginUseCase-->>AuthController: access token + refresh token + principal
+    AuthController-->>Client: success envelope
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant AuthController as Identity / AuthController
+    participant RefreshUseCase as Identity / RefreshSessionUseCase
+    participant Session as Identity / Session
+    participant TokenIssuer as Identity / TokenIssuer
+
+    Client->>AuthController: POST /auth/refresh
+    AuthController->>RefreshUseCase: refreshToken
+    RefreshUseCase->>Session: load by sessionId selector
+    alt token secret matches current hash
+        RefreshUseCase->>Session: rotate refresh token hash
+        RefreshUseCase->>TokenIssuer: issue access token
+        RefreshUseCase-->>Client: new access token + new refresh token
+    else token reuse detected
+        RefreshUseCase->>Session: revoke session
+        RefreshUseCase-->>Client: 401 SESSION_REVOKED
+    end
+```
+
+### RBAC Model
+
+Permission เป็น string contract รูปแบบ `<resource>:<action>`
+
+ตัวอย่าง:
+
+```txt
+users:read
+users:manageRoles
+tax-invoices:issue
+invoices:markPaid
+```
+
+กฎ:
+
+- `resource` ใช้ lower kebab-case
+- `action` ใช้ lower camelCase
+- action เป็น business action ได้ ไม่จำเป็นต้องเป็น CRUD
+- ไม่มี wildcard เช่น `users:*`
+- ไม่มี explicit deny
+- effective permissions = permissions จาก roles ทั้งหมด + direct user permission grants
+- direct user grants เป็น exception path ไม่ใช่วิธีหลักของ RBAC
+- inactive/undeclared permissions ยังอยู่ใน DB เพื่อ audit/rollback แต่ไม่ effective
+
+Role มี stable `key` แยกจาก display `name`:
+
+```json
+{
+  "key": "billing-manager",
+  "name": "Billing Manager"
+}
+```
+
+`admin` และ `member` เป็น system roles:
+
+- `admin` ลบไม่ได้ แก้ key ไม่ได้ และ seed command sync ให้มีทุก declared permission
+- `member` เป็น baseline role แต่ create user ไม่ auto-assign เงียบ ๆ caller ต้องส่ง `roleKeys` เอง
+
+### Permission Declaration and Seed
+
+แต่ละ owning module ประกาศ permissions ของตัวเองผ่าน public API แล้วรวมไว้ใน `src/modules/permissions.registry.ts`
+
+```ts
+export const InvoicingPermissions = {
+  InvoicesMarkPaid: 'invoices:markPaid',
+} as const;
+```
+
+จากนั้น seed command sync ลง DB:
+
+```bash
+npm run migration:run
+npm run identity:seed
+```
+
+seed command ทำแบบ idempotent:
+
+- upsert declared permissions ลง `identity.permissions`
+- mark permissions ที่หายจาก code declarations เป็น inactive/undeclared
+- ensure system roles `admin` และ `member`
+- sync `admin` role ให้มีทุก active declared permission
+- ถ้า `BOOTSTRAP_ADMIN_EMAIL` และ `BOOTSTRAP_ADMIN_PASSWORD` ถูกตั้งไว้ จะสร้างหรือ ensure admin assignment
+- ถ้า bootstrap admin user มีอยู่แล้ว จะ assign `admin` role แต่ไม่ overwrite profile/password
+
+### Guards and Decorators
+
+protected-by-default เป็น app-wide guard ผ่าน `APP_GUARD`
+
+- `@Public()` เปิด endpoint ให้ไม่ต้อง authenticated
+- `@Authenticated()` ต้องมี access token แต่ไม่ต้องมี permission เฉพาะ
+- `@RequirePermissions(...)` ต้องมีทุก permission
+- `@RequireAnyPermission(...)` ต้องมีอย่างน้อยหนึ่ง permission
+- `@CurrentPrincipal()` คืน plain principal ไม่ใช่ TypeORM entity
+
+```ts
+@RequirePermissions(IdentityPermissions.UsersCreate)
+@Post('/users')
+create(@CurrentPrincipal() principal: CurrentPrincipalContext) {
+  // principal.userId, principal.sessionId, principal.permissions
+}
+```
+
+```mermaid
+flowchart LR
+    Controller[Controller route metadata] --> AuthGuard[AuthenticationGuard]
+    AuthGuard --> TokenIssuer[Identity TokenIssuer]
+    AuthGuard --> Identity[Identity principal resolver]
+    Identity --> Request[request.currentPrincipal]
+    Request --> PermissionGuard[PermissionGuard]
+    PermissionGuard --> Handler[Controller handler]
+```
+
+### Auth Environment
+
+```env
+JWT_SECRET=change-this-to-a-strong-secret-at-least-32-chars
+JWT_ACCESS_TOKEN_TTL_SECONDS=900
+REFRESH_TOKEN_TTL_DAYS=30
+AUTH_RATE_LIMIT_MAX_ATTEMPTS=10
+AUTH_RATE_LIMIT_WINDOW_MS=60000
+BOOTSTRAP_ADMIN_EMAIL=
+BOOTSTRAP_ADMIN_PASSWORD=
+```
+
+`JWT_SECRET` ต้องยาวอย่างน้อย 32 characters ใน runtime ที่ issue/verify token
+
 ## Domain Event Best Practice
 
 Event ใน boilerplate นี้หมายถึง **fact ที่เกิดขึ้นแล้ว** ไม่ใช่ command ที่สั่งให้ใครไปทำอะไร
@@ -341,6 +541,7 @@ Event payload ควรเล็กและ stable
 new UserCreatedEvent({
   userId: user.id,
   email: user.email,
+  createdByUserId: actorUserId,
 });
 ```
 
@@ -363,6 +564,15 @@ new UserCreatedEvent({
 - consumer import event contract ผ่าน public API ของ module เจ้าของเท่านั้น
 
 ใน project นี้ `identity` publish `UserCreatedEvent` และ `audit` consume event เพื่อแสดงตัวอย่าง cross-module side effect แบบไม่ import internal ของ identity
+
+Identity ยัง publish security-relevant events หลัง state change สำเร็จ เช่น:
+
+```txt
+identity.session.created
+identity.session.revoked
+identity.user.roles.changed
+identity.role.permissions.changed
+```
 
 Consumer ต้อง import event ผ่าน public API:
 
@@ -391,7 +601,7 @@ sequenceDiagram
     participant AuditHandler as Audit / RecordUserCreatedAuditHandler
 
     Client->>UsersController: POST /users
-    UsersController->>CreateUserUseCase: execute(input)
+    UsersController->>CreateUserUseCase: execute(input, createdByUserId)
     CreateUserUseCase->>UserRepository: findByEmail(email)
 
     alt email already exists
@@ -399,9 +609,12 @@ sequenceDiagram
         CreateUserUseCase-->>UsersController: throw USER_ALREADY_EXISTS
         UsersController-->>Client: 409 error envelope
     else email is available
-        CreateUserUseCase->>UserRepository: save(user)
-        UserRepository-->>CreateUserUseCase: saved user
+        CreateUserUseCase->>UserRepository: save user + credential + grants in transaction
+        UserRepository-->>CreateUserUseCase: committed user
         CreateUserUseCase->>EventBus: publish identity.user.created
+        opt roles assigned
+            CreateUserUseCase->>EventBus: publish identity.user.roles.changed
+        end
         EventBus-->>AuditHandler: UserCreatedEvent
         AuditHandler->>AuditHandler: record audit side effect
         CreateUserUseCase-->>UsersController: UserEntity
@@ -447,10 +660,11 @@ flowchart LR
 - Owning domain: Identity
 - Use case: CreateUserUseCase
 - API: POST /users
+- Required permission: `users:create`
 
 ### State Change
 
-When a user is created successfully, Identity stores the user in `identity.users`.
+When a user is created successfully, Identity stores the user, credential, and requested grants in the `identity` schema.
 
 ### Published Event
 
@@ -466,6 +680,7 @@ When a user is created successfully, Identity stores the user in `identity.users
 | --- | --- | --- | --- |
 | userId | string UUID | yes | ID of the created user |
 | email | string | yes | Normalized user email |
+| createdByUserId | string UUID or null | yes | Authenticated creator, or null for system/seed-created users |
 
 ### Consumers
 
@@ -483,8 +698,9 @@ When a user is created successfully, Identity stores the user in `identity.users
 ### Acceptance Criteria
 
 - Creating a user returns `201` success envelope.
-- `identity.user.created` is published exactly after the user is persisted.
-- Event payload contains `userId` and normalized `email`.
+- `identity.user.created` is published exactly after user, credential, and grants commit.
+- Event payload contains `userId`, normalized `email`, and `createdByUserId`.
+- If roles are assigned, `identity.user.roles.changed` is published separately after assignment succeeds.
 - Audit consumes the event without importing Identity internals.
 - Identity does not call Audit directly.
 ```

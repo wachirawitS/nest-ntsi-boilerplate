@@ -10,6 +10,7 @@ async function bootstrap() {
       .setTitle('NTSI Nest Boilerplate API')
       .setDescription('Modular monolith backend API reference')
       .setVersion('0.0.1')
+      .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, config);
 

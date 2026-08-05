@@ -4,12 +4,13 @@ import {
   Entity,
   Index,
   PrimaryGeneratedColumn,
+  Unique,
   UpdateDateColumn,
 } from 'typeorm';
 
 @Entity({ schema: 'identity', name: 'users' })
-@Index('uq_identity_users_email', ['email'], { unique: true })
 @Index('ix_identity_users_created_at', ['createdAt'])
+@Unique('uq_identity_users_email', ['email'])
 export class UserEntity {
   @PrimaryGeneratedColumn('uuid', {
     name: 'id',

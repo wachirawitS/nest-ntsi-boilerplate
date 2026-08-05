@@ -3,6 +3,7 @@ import { DomainEvent } from '../../../../shared/events';
 export interface UserCreatedPayload {
   userId: string;
   email: string;
+  createdByUserId: string | null;
 }
 
 export class UserCreatedEvent implements DomainEvent<UserCreatedPayload> {
