@@ -60,6 +60,8 @@ npm run migration:run
 npm run start:dev
 ```
 
+Swagger UI is available at `http://localhost:3000/api/docs` and the OpenAPI JSON is available at `http://localhost:3000/api/docs-json`. Set `SWAGGER_ENABLED=false` to disable it.
+
 ## Commands
 
 ```bash
