@@ -103,6 +103,14 @@ this.events.publish(
 );
 ```
 
+When adding or changing an event-driven flow, update the README with:
+
+- A Mermaid sequence or flow diagram.
+- Owning domain and publishing use case.
+- Event name and payload table.
+- Consumers and whether consumer failure affects the main API flow.
+- Acceptance criteria proving the publisher does not import or call consumers directly.
+
 ## Use Case Rules
 
 A use case represents one application action, such as `CreateUserUseCase`, `GetUserUseCase`, or `MarkInvoiceAsPaidUseCase`.

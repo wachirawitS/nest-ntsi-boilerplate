@@ -376,6 +376,130 @@ import { UserCreatedEvent } from '../../../identity';
 import { UserCreatedEvent } from '../../../identity/domain/events/user-created.event';
 ```
 
+### Mermaid Flow Example
+
+ตัวอย่าง flow ของ `Create User` ที่ใช้ event:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant UsersController as Identity / UsersController
+    participant CreateUserUseCase as Identity / CreateUserUseCase
+    participant UserRepository as Identity / UserRepository
+    participant EventBus as Shared / EventBus
+    participant AuditHandler as Audit / RecordUserCreatedAuditHandler
+
+    Client->>UsersController: POST /users
+    UsersController->>CreateUserUseCase: execute(input)
+    CreateUserUseCase->>UserRepository: findByEmail(email)
+
+    alt email already exists
+        UserRepository-->>CreateUserUseCase: existing user
+        CreateUserUseCase-->>UsersController: throw USER_ALREADY_EXISTS
+        UsersController-->>Client: 409 error envelope
+    else email is available
+        CreateUserUseCase->>UserRepository: save(user)
+        UserRepository-->>CreateUserUseCase: saved user
+        CreateUserUseCase->>EventBus: publish identity.user.created
+        EventBus-->>AuditHandler: UserCreatedEvent
+        AuditHandler->>AuditHandler: record audit side effect
+        CreateUserUseCase-->>UsersController: UserEntity
+        UsersController-->>Client: 201 success envelope
+    end
+```
+
+Module view:
+
+```mermaid
+flowchart LR
+    subgraph Identity[identity owning domain]
+        Controller[UsersController]
+        UseCase[CreateUserUseCase]
+        Entity[UserEntity]
+        Event[UserCreatedEvent]
+    end
+
+    subgraph Shared[shared technical]
+        EventBus[EventBus]
+    end
+
+    subgraph Audit[audit module]
+        Handler[RecordUserCreatedAuditHandler]
+    end
+
+    Controller --> UseCase
+    UseCase --> Entity
+    UseCase --> Event
+    UseCase --> EventBus
+    EventBus --> Handler
+```
+
+### How SA Should Specify Event Flows
+
+เวลา SA เขียน spec ว่า flow นี้ใช้ event ให้เขียนแบบนี้ ไม่ใช่แค่บอกว่า "ยิง event"
+
+```md
+## Flow: Create User
+
+### Owner
+
+- Owning domain: Identity
+- Use case: CreateUserUseCase
+- API: POST /users
+
+### State Change
+
+When a user is created successfully, Identity stores the user in `identity.users`.
+
+### Published Event
+
+- Event name: `identity.user.created`
+- Event class: `UserCreatedEvent`
+- Published by: Identity
+- Published after: user is saved successfully
+- Delivery expectation: in-process, best-effort side effect
+
+### Event Payload
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| userId | string UUID | yes | ID of the created user |
+| email | string | yes | Normalized user email |
+
+### Consumers
+
+| Consumer | Action | Required for API success? |
+| --- | --- | --- |
+| Audit | Record user-created audit log | no |
+| Notification | Send welcome email | no |
+
+### Failure Behavior
+
+- If user creation fails, do not publish `identity.user.created`.
+- If an event consumer fails, the create-user API response should not become failed unless the consumer is explicitly part of the main transaction.
+- Consumer failures must be logged and handled by the consumer owner.
+
+### Acceptance Criteria
+
+- Creating a user returns `201` success envelope.
+- `identity.user.created` is published exactly after the user is persisted.
+- Event payload contains `userId` and normalized `email`.
+- Audit consumes the event without importing Identity internals.
+- Identity does not call Audit directly.
+```
+
+SA checklist:
+
+- ระบุ owning domain
+- ระบุ state change ที่เกิดก่อน publish event
+- ระบุ event name เป็น fact ที่เกิดแล้ว
+- ระบุ payload เป็นตาราง
+- ระบุ consumer และ action ของแต่ละ consumer
+- ระบุว่า consumer failure กระทบ API success หรือไม่
+- ระบุว่า flow นี้ eventual consistency ได้หรือไม่
+- ถ้า caller ต้องรอคำตอบ ห้ามใช้ event ให้ใช้ facade แทน
+
 ## Shared Rules
 
 `shared` มีได้ แต่ต้องเล็กและไม่ใช่ business domain
