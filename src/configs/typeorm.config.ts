@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { join } from 'path';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { UserEntity } from '../modules/identity/domain/entities/user.entity';
 
@@ -17,7 +18,7 @@ export const typeOrmDataSourceOptions: DataSourceOptions = {
   ssl,
   synchronize: false,
   entities: [UserEntity],
-  migrations: ['src/migrations/*.ts'],
+  migrations: [join(__dirname, '../migrations/*{.ts,.js}')],
 };
 
 export default new DataSource(typeOrmDataSourceOptions);

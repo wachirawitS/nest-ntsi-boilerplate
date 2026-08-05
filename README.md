@@ -68,6 +68,7 @@ npm run lint
 npm test
 npm run migration:run
 npm run migration:revert
+npm run migration:run:prod
 ```
 
 ## Docker
