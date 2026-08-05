@@ -6,10 +6,12 @@ import {
 } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { typeOrmDataSourceOptions } from './configs/typeorm.config';
+import { AuditModule } from './modules/audit';
 import { IdentityModule } from './modules/identity';
 import {
   ApiExceptionFilter,
@@ -23,7 +25,12 @@ import {
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot({
+      wildcard: false,
+      delimiter: '.',
+    }),
     TypeOrmModule.forRoot(typeOrmDataSourceOptions),
+    AuditModule,
     IdentityModule,
   ],
   controllers: [AppController],

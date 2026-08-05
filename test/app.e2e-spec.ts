@@ -76,6 +76,38 @@ describe('AppController (e2e)', () => {
       });
   });
 
+  it('/users (POST) creates a user and publishes side effects', () => {
+    const email = `event-example-${Date.now()}@example.com`;
+
+    return request(app.getHttpServer())
+      .post('/users')
+      .set('x-request-id', 'create-user-request-id')
+      .send({
+        email,
+        firstName: 'Event',
+        lastName: 'Example',
+      })
+      .expect(201)
+      .expect('x-request-id', 'create-user-request-id')
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          success: true,
+          data: {
+            id: expect.any(String) as unknown,
+            email,
+            firstName: 'Event',
+            lastName: 'Example',
+            isActive: true,
+            createdAt: expect.any(String) as unknown,
+            updatedAt: expect.any(String) as unknown,
+          },
+          meta: {
+            requestId: 'create-user-request-id',
+          },
+        });
+      });
+  });
+
   it('/users/:id (GET) returns domain error envelope', () => {
     const userId = '8efc77b2-7fd6-4fc8-a31f-eecf397a51d2';
 

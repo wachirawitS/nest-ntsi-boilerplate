@@ -47,3 +47,7 @@ _Avoid_: Offset metadata as public API, list wrapper object
 **Validation Detail**:
 A public validation failure item containing a field path and one or more messages. Validation details flatten validator internals into a stable client-facing structure.
 _Avoid_: Raw validator error, nested validator object
+
+**Domain Event**:
+A fact published after a meaningful state change inside an owning domain. Other modules may react to the event through the owning module's public event contract without importing the owner's internal domain or persistence code.
+_Avoid_: Command event, callback, cross-module service shortcut

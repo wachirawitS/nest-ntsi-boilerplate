@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { EventBus } from '../../../../shared/events';
 import { UserEntity } from '../../domain/entities/user.entity';
 import { UserAlreadyExistsError } from '../../domain/errors/user-already-exists.error';
+import { UserCreatedEvent } from '../../domain/events/user-created.event';
 import { UserRepository } from '../../domain/repositories/user.repository';
 
 export interface CreateUserInput {
@@ -11,7 +13,10 @@ export interface CreateUserInput {
 
 @Injectable()
 export class CreateUserUseCase {
-  constructor(private readonly users: UserRepository) {}
+  constructor(
+    private readonly users: UserRepository,
+    private readonly events: EventBus,
+  ) {}
 
   async execute(input: CreateUserInput): Promise<UserEntity> {
     const normalizedEmail = input.email.toLowerCase();
@@ -21,11 +26,20 @@ export class CreateUserUseCase {
       throw new UserAlreadyExistsError(normalizedEmail);
     }
 
-    return this.users.save(
+    const user = await this.users.save(
       UserEntity.create({
         ...input,
         email: normalizedEmail,
       }),
     );
+
+    this.events.publish(
+      new UserCreatedEvent({
+        userId: user.id,
+        email: user.email,
+      }),
+    );
+
+    return user;
   }
 }

@@ -252,12 +252,129 @@ export class CreateOrderUseCase {
 ตัวอย่าง event:
 
 ```ts
-export class UserCreatedEvent {
-  constructor(public readonly userId: string) {}
+export class UserCreatedEvent implements DomainEvent<UserCreatedPayload> {
+  static readonly eventName = 'identity.user.created';
+
+  readonly name = UserCreatedEvent.eventName;
+  readonly occurredAt = new Date();
+
+  constructor(readonly payload: UserCreatedPayload) {}
 }
 ```
 
 ใช้ facade เมื่อ business flow ต้องรู้ผลทันที ใช้ event เมื่อ module อื่นแค่ต้อง react ต่อ
+
+## Domain Event Best Practice
+
+Event ใน boilerplate นี้หมายถึง **fact ที่เกิดขึ้นแล้ว** ไม่ใช่ command ที่สั่งให้ใครไปทำอะไร
+
+ชื่อ event ที่ดี:
+
+```txt
+identity.user.created
+invoice.paid
+organization.suspended
+```
+
+ชื่อ event ที่ไม่ดี:
+
+```txt
+create.user
+send.email.now
+check.permission
+```
+
+เหตุผล: event ควรบอกว่าเกิดอะไรขึ้นแล้ว ส่วนใครจะ react อย่างไรเป็นเรื่องของ consumer
+
+### ใช้ Event เมื่อไหร่
+
+ใช้ event เมื่อ:
+
+- module อื่นต้อง react หลัง state change
+- งานนั้นเป็น side effect
+- caller ไม่ต้องรอผลลัพธ์เพื่อจบ operation
+- ความสัมพันธ์เป็น eventual consistency ได้
+- ต้องการลด coupling ระหว่าง module
+
+ตัวอย่างที่เหมาะ:
+
+```txt
+identity สร้าง user สำเร็จ
+  -> publish UserCreatedEvent
+audit รับ event
+  -> record audit log
+notification รับ event
+  -> ส่ง welcome email
+```
+
+### ไม่ควรใช้ Event เมื่อไหร่
+
+ไม่ควรใช้ event เมื่อ:
+
+- caller ต้องการคำตอบทันที
+- caller ต้อง fail ถ้าอีก module ตอบว่าไม่ได้
+- เป็น query เช่น get user profile
+- เป็น permission check
+- ใช้ event เพื่อเลี่ยงการออกแบบ facade
+
+ตัวอย่างที่ไม่ควรใช้ event:
+
+```txt
+orders ต้องรู้ว่า user สั่งซื้อได้ไหม
+```
+
+กรณีนี้ควรใช้ facade:
+
+```ts
+await this.identity.assertUserExists(input.userId);
+```
+
+ไม่ใช่ publish event แล้วหวังว่า module อื่นจะตอบกลับ
+
+### Event Payload
+
+Event payload ควรเล็กและ stable
+
+ดี:
+
+```ts
+new UserCreatedEvent({
+  userId: user.id,
+  email: user.email,
+});
+```
+
+ไม่ดี:
+
+```ts
+new UserCreatedEvent({
+  user,
+  repository,
+  requestDto,
+});
+```
+
+กฎ:
+
+- ใส่ ID และ fact ที่ consumer ต้องใช้จริง
+- ไม่ใส่ TypeORM entity ทั้งก้อน
+- ไม่ใส่ repository/service/request object
+- ไม่ให้ consumer แก้ state ของ publisher ตรง ๆ
+- consumer import event contract ผ่าน public API ของ module เจ้าของเท่านั้น
+
+ใน project นี้ `identity` publish `UserCreatedEvent` และ `audit` consume event เพื่อแสดงตัวอย่าง cross-module side effect แบบไม่ import internal ของ identity
+
+Consumer ต้อง import event ผ่าน public API:
+
+```ts
+import { UserCreatedEvent } from '../../../identity';
+```
+
+ไม่ใช่:
+
+```ts
+import { UserCreatedEvent } from '../../../identity/domain/events/user-created.event';
+```
 
 ## Shared Rules
 

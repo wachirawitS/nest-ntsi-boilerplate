@@ -18,6 +18,7 @@ Read this file before making code changes. For deeper context, also read:
 - Keep `shared` small and non-domain. It may contain technical primitives only.
 - Use facades for synchronous cross-module calls that need an immediate answer.
 - Use events for cross-module side effects or reactions.
+- Do not use events as a shortcut to avoid designing a module facade or return value.
 
 ## Module Structure
 
@@ -58,6 +59,49 @@ import { TypeOrmUserRepository } from '../identity/infrastructure/persistence/ty
 ```
 
 If another module needs data or behavior, add a method to the owning module's facade or publish/consume an event. Do not bypass the boundary.
+
+## Domain Event Rules
+
+Use domain events only for facts that already happened.
+
+Good event names:
+
+```txt
+identity.user.created
+invoice.paid
+organization.suspended
+```
+
+Bad event names:
+
+```txt
+create.user
+send.email.now
+check.permission
+```
+
+Rules:
+
+- Publish events after the state change succeeds.
+- Event classes live in the owning module.
+- Other modules may import event contracts only through the owning module's public API.
+- Event payloads should contain stable identifiers and small facts, not full entities.
+- Event handlers must not mutate the publishing module's state directly.
+- Event handlers should be idempotent where possible.
+- Use events for side effects, notifications, audit logs, projections, and eventual consistency.
+- Do not use events when the caller needs an immediate answer or must fail the current operation based on the result.
+- Do not put TypeORM entities, repositories, request DTOs, or private domain objects in event payloads.
+
+Example:
+
+```ts
+this.events.publish(
+  new UserCreatedEvent({
+    userId: user.id,
+    email: user.email,
+  }),
+);
+```
 
 ## Use Case Rules
 
