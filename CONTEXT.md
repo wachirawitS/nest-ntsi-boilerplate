@@ -51,3 +51,11 @@ _Avoid_: Raw validator error, nested validator object
 **Domain Event**:
 A fact published after a meaningful state change inside an owning domain. Other modules may react to the event through the owning module's public event contract without importing the owner's internal domain or persistence code.
 _Avoid_: Command event, callback, cross-module service shortcut
+
+**Cross-Domain Reference**:
+A reference from one owning domain to another domain's concept using a stable identifier rather than an ORM relation or imported entity. The referencing domain may store the identifier but does not own the referenced concept's lifecycle.
+_Avoid_: Cross-module relation, shared entity reference
+
+**Reference Snapshot**:
+A copied value from another owning domain captured as part of a historical or business record. It preserves what the referencing domain knew at the time and is not the source of truth for the referenced concept.
+_Avoid_: Cached owner data, duplicated source of truth

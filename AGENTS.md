@@ -190,6 +190,13 @@ The persistence stack is Postgres + TypeORM + migrations.
 - Foreign key columns use `{referenced_singular}_id`.
 - Timestamp columns use `created_at`, `updated_at`, and optionally `deleted_at`.
 - Constraint/index names include the owning domain prefix.
+- TypeORM relation decorators are allowed only inside the same owning domain.
+- Do not use TypeORM relation decorators across owning domains.
+- Do not create database foreign keys across owning domains by default.
+- Cross-domain references store scalar IDs such as `userId` or `customerId`.
+- Cross-domain snapshots use explicit names such as `customerNameSnapshot`.
+- Business domain repositories must not hide joins across owning domains.
+- Cross-domain list/report reads should use facade composition, event-driven projections, or a dedicated reporting module.
 
 Examples:
 
@@ -200,6 +207,36 @@ ix_identity_users_created_at
 fk_billing_invoice_lines_invoice_id_invoices
 chk_billing_invoices_total_amount_non_negative
 ```
+
+Forbidden cross-domain ORM relation:
+
+```ts
+@ManyToOne(() => UserEntity)
+@JoinColumn({ name: 'user_id' })
+user!: UserEntity;
+```
+
+Allowed cross-domain reference:
+
+```ts
+@Column({ name: 'user_id', type: 'uuid' })
+userId!: string;
+```
+
+Allowed historical snapshot:
+
+```ts
+@Column({ name: 'customer_name_snapshot', type: 'varchar' })
+customerNameSnapshot!: string;
+```
+
+Review failures:
+
+- Importing another module's entity from `domain/entities`.
+- `@ManyToOne`, `@OneToMany`, `@OneToOne`, or `@ManyToMany` targeting another owning domain.
+- Migration with `REFERENCES other_schema.table` without an explicit ADR/exception.
+- Business repository joining tables from another owning domain.
+- Ambiguous reference columns such as `refId`, `ownerId`, or `externalId` when the concept is known.
 
 ## Migration Rules
 

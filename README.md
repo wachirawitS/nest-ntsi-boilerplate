@@ -594,6 +594,79 @@ fk_billing_invoice_lines_invoice_id_invoices
 chk_billing_invoices_total_amount_non_negative
 ```
 
+### Cross-Domain References
+
+ถ้า table หนึ่งต้องอ้าง concept ของอีก owning domain ให้เก็บเป็น scalar ID เท่านั้น ไม่ใช้ TypeORM relation decorator ข้าม domain
+
+ห้าม:
+
+```ts
+@ManyToOne(() => UserEntity)
+@JoinColumn({ name: 'user_id' })
+user!: UserEntity;
+```
+
+ให้ใช้:
+
+```ts
+@Column({ name: 'user_id', type: 'uuid' })
+userId!: string;
+```
+
+กฎ:
+
+- อนุญาต TypeORM relation decorator เฉพาะภายใน owning domain เดียวกัน
+- ห้าม `@ManyToOne`, `@OneToMany`, `@OneToOne`, `@ManyToMany` ข้าม owning domain
+- ห้าม import entity ของ module อื่นเพื่อทำ relation
+- default ห้าม DB foreign key ข้าม owning domain
+- repository ของ business domain ห้ามซ่อน join ข้าม schema/domain
+- ถ้า command ต้องเช็คว่า ID มีจริง ให้เช็คผ่าน facade ของ owning domain
+- ถ้า list/report ต้องใช้ข้อมูลหลาย domain ให้ใช้ facade composition, projection หรือ reporting module
+
+ตัวอย่าง `orders` อ้าง `identity`:
+
+```ts
+await this.identity.assertUserExists(input.userId);
+```
+
+```ts
+@Column({ name: 'user_id', type: 'uuid' })
+userId!: string;
+```
+
+ไม่ทำ:
+
+```sql
+FOREIGN KEY (user_id) REFERENCES identity.users(id)
+```
+
+ยกเว้น cross-domain FK ได้เฉพาะมี ADR/exception ชัดเจน เช่น immutable shared reference data หรือ domain ที่ตั้งใจไม่ extract
+
+### Reference Snapshot
+
+ถ้าข้อมูลจากอีก domain กลายเป็นส่วนหนึ่งของ historical/business record ให้เก็บ snapshot ได้
+
+ตัวอย่าง invoice:
+
+```ts
+@Column({ name: 'customer_id', type: 'uuid' })
+customerId!: string;
+
+@Column({ name: 'customer_name_snapshot', type: 'varchar' })
+customerNameSnapshot!: string;
+
+@Column({ name: 'customer_tax_id_snapshot', type: 'varchar' })
+customerTaxIdSnapshot!: string;
+```
+
+กฎ:
+
+- `{concept}Id` คือ reference ไปยัง owning domain อื่น
+- `{concept}{Field}Snapshot` คือค่าที่ record นี้ต้องจำ ณ เวลานั้น
+- snapshot ไม่ใช่ source of truth ของ domain เจ้าของข้อมูล
+- ถ้าต้องการค่าล่าสุด ให้ถาม owner ผ่าน facade/projection
+- DB column snapshot ต้อง suffix `_snapshot`
+
 ## Migrations
 
 Migration อยู่กลางที่ `src/migrations`
@@ -953,6 +1026,13 @@ Architecture decisions อยู่ใน `docs/adr`
 - `0007-postgres-typeorm-migrations.md`
 - `0008-central-migrations-with-domain-prefixes.md`
 - `0009-database-object-naming.md`
+- `0020-cross-domain-orm-relations.md`
+- `0021-no-cross-domain-foreign-keys-by-default.md`
+- `0022-cross-domain-reference-validation.md`
+- `0023-cross-domain-read-models.md`
+- `0024-cross-domain-reference-snapshots.md`
+- `0025-cross-domain-reference-naming.md`
+- `0026-cross-domain-reference-enforcement.md`
 
 Glossary ของ project อยู่ใน `CONTEXT.md`
 
