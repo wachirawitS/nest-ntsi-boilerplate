@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AppCacheModule } from '../../shared/cache';
 import { EventsModule } from '../../shared/events';
 import { IdentityFacade } from './application/identity.facade';
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
@@ -10,7 +11,11 @@ import { TypeOrmUserRepository } from './infrastructure/persistence/typeorm-user
 import { UsersController } from './presentation/controllers/users.controller';
 
 @Module({
-  imports: [EventsModule, TypeOrmModule.forFeature([UserEntity])],
+  imports: [
+    AppCacheModule,
+    EventsModule,
+    TypeOrmModule.forFeature([UserEntity]),
+  ],
   controllers: [UsersController],
   providers: [
     IdentityFacade,

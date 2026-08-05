@@ -529,6 +529,137 @@ shared/dtos/
 
 ถ้า concept มี owning domain ให้เก็บไว้ใน module เจ้าของ แล้ว expose ผ่าน facade, event หรือ explicit contract
 
+## Cache
+
+Cache ใน boilerplate นี้เป็น technical shared capability ไม่ใช่ business owner และไม่ใช่ source of truth
+
+เริ่มต้นใช้ Nest local in-memory cache ผ่าน `@nestjs/cache-manager`
+
+```txt
+src/shared/cache/
+  cache.module.ts
+  cache-store.ts
+  stores/nest-cache.store.ts
+```
+
+Business module ต้อง depend ที่ abstraction:
+
+```ts
+constructor(private readonly cache: CacheStore) {}
+```
+
+ไม่ควร import cache-manager หรือ Redis client ตรงใน use case
+
+### Cache-Aside Pattern
+
+ตัวอย่างใน `GetUserUseCase`
+
+```ts
+const cachedUser = await this.cache.getOrSet(
+  IdentityCacheKeys.userById(userId),
+  async () => {
+    const foundUser = await this.users.findById(userId);
+
+    if (!foundUser) {
+      throw new UserNotFoundError(userId);
+    }
+
+    return this.toCacheRecord(foundUser);
+  },
+  { ttlMs: 60_000 },
+);
+```
+
+แนวคิด:
+
+- read path ลองอ่าน cache ก่อน
+- cache miss ค่อยโหลดจาก repository เจ้าของข้อมูล
+- หลังโหลดสำเร็จค่อย set cache
+- ถ้า cache หาย ระบบต้องยังทำงานได้จาก source of truth
+
+### Cache Key Ownership
+
+Cache key เฉพาะ domain ต้องอยู่ใน module เจ้าของ
+
+```txt
+src/modules/identity/application/cache/identity-cache-keys.ts
+```
+
+ตัวอย่าง:
+
+```ts
+export class IdentityCacheKeys {
+  static userById(userId: string): string {
+    return `identity:user:${userId}`;
+  }
+}
+```
+
+ห้ามเอา key เฉพาะ business domain ไปไว้ใน `shared/cache`
+
+### Cache Payload
+
+Cache payload ควรเป็น plain serializable record ไม่ใช่ TypeORM entity instance
+
+ดี:
+
+```ts
+{
+  id: user.id,
+  email: user.email,
+  createdAt: user.createdAt.toISOString()
+}
+```
+
+ไม่ดี:
+
+```ts
+userEntity
+```
+
+เหตุผลคือ local memory cache เก็บ class instance ได้ แต่ Redis จะ serialize/deserialize แล้ว class และ Date อาจไม่เหมือนเดิม
+
+### Invalidation
+
+หลัง state change สำเร็จ ให้ populate หรือ invalidate cache ที่เกี่ยวข้อง
+
+ตัวอย่าง `CreateUserUseCase` สร้าง user สำเร็จแล้ว populate cache:
+
+```ts
+await this.cache.set(
+  IdentityCacheKeys.userById(user.id),
+  userCacheRecord,
+  { ttlMs: 60_000 },
+);
+```
+
+ถ้าวันหลังมี `UpdateUserUseCase` ต้อง invalidate หรือ set ค่าใหม่:
+
+```ts
+await this.cache.delete(IdentityCacheKeys.userById(user.id));
+```
+
+### เปลี่ยนเป็น Redis ภายหลัง
+
+Use case ไม่ควรเปลี่ยน
+
+เปลี่ยนเฉพาะ implementation/provider ของ `CacheStore` หรือ config ของ `AppCacheModule`
+
+```txt
+CacheStore
+  -> NestCacheStore local memory ตอนนี้
+  -> RedisCacheStore หรือ Redis-backed cache-manager store ในอนาคต
+```
+
+กฎ:
+
+- cache ห้ามเป็น source of truth
+- module เจ้าของข้อมูลต้องยังโหลดจาก repository/facade ได้เสมอ
+- cache key ต้อง namespaced ด้วย owning domain เช่น `identity:user:{id}`
+- หลีกเลี่ยง cache ข้อมูลที่เปลี่ยนถี่ ถ้าไม่มี invalidation ชัด
+- หลีกเลี่ยง cache permission/security decision นานเกินไป
+- TTL default ใช้ `CACHE_TTL_MS`
+
 ## Database Rules
 
 ใช้ Postgres + TypeORM และใช้ migration เท่านั้น
@@ -1033,6 +1164,7 @@ Architecture decisions อยู่ใน `docs/adr`
 - `0024-cross-domain-reference-snapshots.md`
 - `0025-cross-domain-reference-naming.md`
 - `0026-cross-domain-reference-enforcement.md`
+- `0027-cache-store-abstraction.md`
 
 Glossary ของ project อยู่ใน `CONTEXT.md`
 

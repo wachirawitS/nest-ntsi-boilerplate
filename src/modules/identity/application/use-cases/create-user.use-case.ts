@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { CacheStore } from '../../../../shared/cache';
 import { EventBus } from '../../../../shared/events';
+import { IdentityCacheKeys } from '../cache/identity-cache-keys';
 import { UserEntity } from '../../domain/entities/user.entity';
 import { UserAlreadyExistsError } from '../../domain/errors/user-already-exists.error';
 import { UserCreatedEvent } from '../../domain/events/user-created.event';
@@ -16,6 +18,7 @@ export class CreateUserUseCase {
   constructor(
     private readonly users: UserRepository,
     private readonly events: EventBus,
+    private readonly cache: CacheStore,
   ) {}
 
   async execute(input: CreateUserInput): Promise<UserEntity> {
@@ -31,6 +34,19 @@ export class CreateUserUseCase {
         ...input,
         email: normalizedEmail,
       }),
+    );
+    await this.cache.set(
+      IdentityCacheKeys.userById(user.id),
+      {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isActive: user.isActive,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+      },
+      { ttlMs: 60_000 },
     );
 
     this.events.publish(

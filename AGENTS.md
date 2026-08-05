@@ -111,6 +111,20 @@ When adding or changing an event-driven flow, update the README with:
 - Consumers and whether consumer failure affects the main API flow.
 - Acceptance criteria proving the publisher does not import or call consumers directly.
 
+## Cache Rules
+
+Use `CacheStore` from `src/shared/cache` instead of importing cache-manager, Redis clients, or Nest cache internals in business modules.
+
+- Cache is an optimization, not a source of truth.
+- Business modules own their cache keys.
+- Keep domain-specific cache keys inside the owning module, not `shared/cache`.
+- Use cache-aside for read paths.
+- Populate or invalidate cache after successful state changes.
+- Cache payloads should be plain serializable records, not TypeORM entity instances.
+- Always support cache miss by loading from the owning repository/facade.
+- Use short TTLs by default and make longer TTLs a deliberate choice.
+- To switch to Redis, replace or reconfigure the `CacheStore` implementation/provider; do not change use cases.
+
 ## Use Case Rules
 
 A use case represents one application action, such as `CreateUserUseCase`, `GetUserUseCase`, or `MarkInvoiceAsPaidUseCase`.
