@@ -24,6 +24,34 @@ _Avoid_: Shared schema, common entity owner
 A small real module included to demonstrate the boilerplate's structure, boundaries, persistence, and public API conventions. It should prove the pattern without growing into a full product feature set.
 _Avoid_: Demo folder, complete auth system
 
+**Access Control Baseline**:
+A production-ready, intentionally small authentication and authorization foundation included so applications created from the boilerplate start with real access control rather than a demo-only example.
+_Avoid_: Demo auth, sample login, complete IAM platform
+
+**Identity**:
+The owning domain for application users, local credentials, sessions, and baseline role-based authorization decisions.
+_Avoid_: Auth module, user store, account service
+
+**Permission**:
+A named authorization grant expressed as `<resource>:<action>`, such as `users:read`, `tax-invoices:issue`, or `invoices:markPaid`, where `resource` uses lower kebab-case and `action` uses lower camelCase. The action may be a business action rather than a CRUD verb.
+_Avoid_: Capability flag, access bit, route name
+
+**Role**:
+A keyed collection of permissions that can be assigned to users; the role key is the stable identifier, while the display name may change.
+_Avoid_: User type, group, profile
+
+**Direct Permission Grant**:
+An exceptional permission assigned directly to one user outside their roles.
+_Avoid_: User permission set, personal role, inline policy
+
+**Session**:
+A revocable authenticated user session represented by server-side state and an opaque refresh token.
+_Avoid_: Refresh JWT, login cache, bearer snapshot
+
+**Credential**:
+A private authentication secret bound to a user identity, such as a password hash used for local login.
+_Avoid_: Password field, login detail, auth data
+
 **Response Envelope**:
 A consistent JSON wrapper for API responses that separates the operation result from response metadata. Successful JSON responses carry `success`, `data`, and optional `meta`.
 _Avoid_: Raw response, ad hoc response shape
