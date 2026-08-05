@@ -78,6 +78,53 @@ Request DTOs live in `presentation/dtos`.
 - API request/response fields use `camelCase`.
 - Do not expose TypeORM entities directly as controller responses. Map entities to response DTOs.
 
+## Response and Error Rules
+
+All JSON API responses use the standard envelope.
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "meta": {
+    "requestId": "8efc77b2-7fd6-4fc8-a31f-eecf397a51d2"
+  }
+}
+```
+
+Error:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Validation failed",
+    "details": []
+  },
+  "meta": {
+    "requestId": "8efc77b2-7fd6-4fc8-a31f-eecf397a51d2",
+    "timestamp": "2026-08-05T10:30:00.000Z",
+    "path": "/users"
+  }
+}
+```
+
+- Controllers return response DTOs or data objects; do not manually wrap success responses.
+- The global response interceptor creates the success envelope.
+- The global exception filter creates the error envelope.
+- Domain/application errors should extend `ApplicationError`.
+- `ApplicationError` carries `code`, `message`, and optional `details`, but not HTTP status.
+- Map error codes to HTTP statuses in the global error status map.
+- Error codes use stable `SCREAMING_SNAKE_CASE`.
+- Clients must branch on `error.code`, not `error.message`.
+- Preserve `x-request-id` when callers send it; otherwise generate one.
+- Return `x-request-id` in both response headers and response `meta.requestId`.
+- Validation details use `{ field, messages }[]`.
+- Paginated lists return arrays in `data` and pagination details in `meta.pagination`.
+
 ## Database Rules
 
 The persistence stack is Postgres + TypeORM + migrations.

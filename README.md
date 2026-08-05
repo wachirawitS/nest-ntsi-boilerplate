@@ -425,6 +425,149 @@ app.useGlobalPipes(
 - input ถูก transform ตาม DTO เท่าที่ Nest/class-transformer รองรับ
 - controller ได้ input ที่ผ่าน validation แล้ว
 
+## Response Standard
+
+JSON API ทุก endpoint ใช้ response envelope กลาง
+
+Success response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "email": "user@example.com"
+  },
+  "meta": {
+    "requestId": "8efc77b2-7fd6-4fc8-a31f-eecf397a51d2"
+  }
+}
+```
+
+Controller ไม่ต้อง wrap response เอง ให้ return DTO ปกติ
+
+```ts
+@Get(':id')
+async getById(@Param('id') id: string): Promise<UserResponseDto> {
+  const user = await this.getUser.execute(id);
+
+  return UserResponseDto.fromEntity(user);
+}
+```
+
+`ApiResponseInterceptor` จะ wrap เป็น envelope ให้เอง
+
+ข้อยกเว้นที่ไม่ควร wrap:
+
+- file download
+- stream
+- redirect
+- health check ที่ตั้งใจให้ raw
+- endpoint ที่ตอบ `204 No Content`
+
+## Error Standard
+
+Error response ใช้ envelope กลางเช่นกัน
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "USER_NOT_FOUND",
+    "message": "User was not found",
+    "details": {
+      "userId": "uuid"
+    }
+  },
+  "meta": {
+    "requestId": "8efc77b2-7fd6-4fc8-a31f-eecf397a51d2",
+    "timestamp": "2026-08-05T10:30:00.000Z",
+    "path": "/users/uuid"
+  }
+}
+```
+
+กฎ:
+
+- client ต้องใช้ `error.code` เป็น contract หลัก
+- `message` เป็นข้อความอ่านได้ เปลี่ยนได้ ไม่ควรใช้ branch logic
+- production ไม่ส่ง stack trace
+- HTTP status ยังใช้ตามปกติ เช่น `400`, `404`, `409`, `500`
+- controller ไม่ควร try/catch เพื่อ map domain error เอง
+- `ApiExceptionFilter` เป็นคน map error เป็น envelope
+
+Domain/application error ควร extend `ApplicationError`
+
+```ts
+export class UserNotFoundError extends ApplicationError {
+  constructor(userId: string) {
+    super({
+      code: ErrorCode.UserNotFound,
+      message: 'User was not found',
+      details: { userId },
+    });
+  }
+}
+```
+
+`ApplicationError` ไม่พก HTTP status เพราะ domain/application ไม่ควรรู้ transport detail
+
+Validation error ใช้ shape นี้:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "Validation failed",
+    "details": [
+      {
+        "field": "email",
+        "messages": ["email must be an email"]
+      }
+    ]
+  },
+  "meta": {
+    "requestId": "req_123",
+    "timestamp": "2026-08-05T10:30:00.000Z",
+    "path": "/users"
+  }
+}
+```
+
+## Request ID
+
+API ใช้ `x-request-id`
+
+- ถ้า caller ส่ง `x-request-id` มา ให้ใช้ค่านั้น
+- ถ้าไม่ส่งมา server จะ generate UUID
+- response ต้องส่ง header `x-request-id` กลับเสมอ
+- response body ต้องมี `meta.requestId`
+
+## Pagination Response
+
+List endpoint ใช้ `data` เป็น array และใส่ pagination ใน `meta.pagination`
+
+```json
+{
+  "success": true,
+  "data": [],
+  "meta": {
+    "requestId": "req_123",
+    "pagination": {
+      "page": 1,
+      "perPage": 20,
+      "total": 100,
+      "totalPages": 5,
+      "hasNextPage": true,
+      "hasPreviousPage": false
+    }
+  }
+}
+```
+
+Public API ใช้ `page/perPage` เป็น default ส่วน repository ภายในจะใช้ `offset/limit` ก็ได้
+
 ## Swagger
 
 Swagger UI:

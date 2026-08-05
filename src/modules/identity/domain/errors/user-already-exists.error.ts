@@ -1,6 +1,11 @@
-export class UserAlreadyExistsError extends Error {
+import { ApplicationError, ErrorCode } from '../../../../shared/api';
+
+export class UserAlreadyExistsError extends ApplicationError {
   constructor(email: string) {
-    super(`User with email ${email} already exists`);
-    this.name = 'UserAlreadyExistsError';
+    super({
+      code: ErrorCode.UserAlreadyExists,
+      message: 'User with this email already exists',
+      details: { email },
+    });
   }
 }

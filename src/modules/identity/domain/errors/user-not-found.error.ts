@@ -1,6 +1,11 @@
-export class UserNotFoundError extends Error {
+import { ApplicationError, ErrorCode } from '../../../../shared/api';
+
+export class UserNotFoundError extends ApplicationError {
   constructor(userId: string) {
-    super(`User ${userId} was not found`);
-    this.name = 'UserNotFoundError';
+    super({
+      code: ErrorCode.UserNotFound,
+      message: 'User was not found',
+      details: { userId },
+    });
   }
 }
